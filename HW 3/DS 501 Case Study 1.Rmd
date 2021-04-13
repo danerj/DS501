@@ -1,0 +1,235 @@
+---
+title: "DS 501 Case Study 1"
+author: "Dane Johnson"
+date: "2/26/2021"
+output: pdf_document
+---
+
+## Problem 1: Sampling Twitter Data with Streaming API about a certain topic
+
+```{r, echo=TRUE, include = FALSE}
+consumerKey = "B72nXGRWp1o2SyifQ5ETV8pLp"
+consumerSecret = "9L4I5lMxoqV414Gkxr7laWfbVtseXNlYCZTgi6GRFtVlY0BZCB"
+accessToken = "1363876474638458880-ntWJ9ySlPiIyMGW3oloVSqvZ2S6sKN"
+accessTokenSecret = "3Roxp9QdPFn1Cp2Y9XoHjSp7vrlgR76SfeJQNTXcUztoj"
+```
+
+```{r, include= FALSE}
+install.packages("knitr", repos = "http://cran.us.r-project.org")
+install.packages("twitteR", repos = "http://cran.us.r-project.org")
+install.packages("stringr", repos = "http://cran.us.r-project.org")
+install.packages("tm", repos = "http://cran.us.r-project.org")
+install.packages("purrr", repos = "http://cran.us.r-project.org")
+install.packages("wordcloud", repos = "http://cran.us.r-project.org")
+
+library(twitteR)
+library(knitr)
+library(stringr)
+library(tm)
+library(purrr)
+library(wordcloud)
+
+```
+
+```{r, eval=TRUE, echo = TRUE, message=FALSE}
+
+# Collect tweets about a topic from twitter.
+setup_twitter_oauth(consumerKey, consumerSecret, accessToken, accessTokenSecret)
+tweets = searchTwitter('#math', n=500)
+tweets = strip_retweets(tweets, strip_manual=TRUE, strip_mt=TRUE)
+tweetsDF = twListToDF(tweets)
+
+# Store the downloaded tweets into a local file.
+write.csv(tweetsDF, file = "tweet_file.csv")
+
+```
+
+- The topic of interest: < Math Related Tweets>
+- The total number of tweets collected: < 500 >
+
+## Problem 2: Analyzing Tweets and Tweet Entities with Frequency Analysis
+
+**1. Word Count:** 
+
+- Use the tweets you collected in Problem 1, and compute the frequencies of the words being used in these tweets.
+- Display a table of the top 30 words (ONLY) with their counts
+```{r, warning = FALSE}
+
+# To analyze word frequency, create a corpus
+#from the tweets and then process the corpus
+#to remove characters that do not represent
+#natural language. Then sort the pared down
+#results in decreasing order.
+tweets_text <- sapply(tweets, function(x) x$getText())
+
+corpus <- Corpus(VectorSource(tweets_text))
+
+corpus = tm_map(corpus, content_transformer(tolower))
+corpus = tm_map(corpus, removeNumbers)
+corpus = tm_map(corpus, removePunctuation)
+corpus = tm_map(corpus, removeWords, stopwords())
+corpus = tm_map(corpus, stemDocument)
+corpus = tm_map(corpus, stripWhitespace)
+corpus = tm_map(corpus, removeWords, c("RT", "are","that", "..."))
+removeURL <- function(x) gsub("http[[:alnum:]]*", "", x)
+corpus <- tm_map(corpus, content_transformer(removeURL))
+
+tweets_2 <- TermDocumentMatrix(corpus)
+tweets_2 <- as.matrix(tweets_2)
+tweets_2 <- sort(rowSums(tweets_2),decreasing=TRUE)
+tweets_2 <- data.frame(word = names(tweets_2),freq=tweets_2)
+
+head(tweets_2,30)
+
+```
+
+**2. Find the most popular tweets in your collection of tweets**
+
+Please display a table of the top 10 tweets
+```{r}
+
+tweetsDF = tweetsDF[order(-tweetsDF$retweetCount),]
+most_popular_tweets_DF = data.frame("PopularTweet" = tweetsDF$text,
+    "RetweetCount" =tweetsDF$retweetCount)
+head(most_popular_tweets_DF, 10)
+
+```
+
+**3. Find the most popular Tweet Entities in your collection of tweets**
+
+Please display a table of the top 10 hashtags (ONLY), top 10 user mentions (ONLY) that are the most popular in your collection of tweets.
+```{r}
+
+entity_list = c()
+# Create a for statement to populate the list
+for (i in seq(1, length(tweets_text), by=1)) {
+    entity_list[[i]] = str_extract_all(tweets_text[i], "#\\S+", simplify =  TRUE)
+}
+
+entity_list = flatten(entity_list)
+entity_corpus = Corpus(VectorSource(entity_list))
+entity_corpus = TermDocumentMatrix(entity_corpus)
+entity_corpus = as.matrix(entity_corpus)
+entity_corpus = sort(rowSums(entity_corpus),decreasing=TRUE)
+entity_corpus = data.frame(hashtag = names(entity_corpus),freq=entity_corpus)
+head(entity_corpus,10)
+
+mention_list = c()
+# Create a for statement to populate the list
+for (i in seq(1, length(tweets_text), by=1)) {
+    mention_list[[i]] = str_extract_all(tweets_text[i], "@\\S+", simplify =  TRUE)
+}
+
+mention_list = flatten(mention_list)
+mention_corpus = Corpus(VectorSource(mention_list))
+mention_corpus = TermDocumentMatrix(mention_corpus)
+mention_corpus = as.matrix(mention_corpus)
+mention_corpus = sort(rowSums(mention_corpus),decreasing=TRUE)
+mention_corpus = data.frame(user = names(mention_corpus),freq=mention_corpus)
+head(mention_corpus,10)
+
+```
+
+## Problem 3: Getting any 20 friends and any 20 followers of a popular user in twitter
+
+```{r}
+# Twitter User of Interest: Seattle Seahawks Quarterback Russell Wilson
+
+user = getUser("DangeRussWilson")
+user$getDescription()
+
+#Finding 20 Friends
+friends = user$getFriends(n=20)
+friendsDF = twListToDF(friends)
+friendsDF = data.frame("FriendID" = friendsDF$id, "FriendName" = friendsDF$screenName)
+head(friendsDF, 20)
+
+#Finding 20 followers
+followers = user$getFollowers(n=20)
+followersDF = twListToDF(followers)
+followersDF = data.frame("FollowerID" = followersDF$id, "FollowerName" =followersDF$screenName)
+head(followersDF, 20)
+
+#Finding users that are both friends and followers
+friend_count = user$getFriendsCount()
+follower_count = user$getFollowersCount()
+all_friends = user$getFriends(n=friend_count)
+
+# The line below will get all followers but exceeds
+# Twitter's rate limits since there are so many
+# followers. For future projects try using the 
+# rtweet package instead of twitteR package.
+
+#all_followers = user$getFollowers(n= follower_count)
+
+# So to perform an approximation for this
+# assignment, use the same command but 
+# request some smaller number of followers.
+
+all_followers = user$getFollowers(n=10000)
+
+friends_and_followers=
+  intersect(all_friends,all_followers)
+friends_and_followersDF =
+  twListToDF(friends_and_followers)
+friends_and_followersDF =
+  data.frame("Friend/FollowerID" = friends_and_followersDF$id,
+             "Friend/FollowerName" =
+               friends_and_followersDF$screenName)
+
+# However, this still doesn't quite solve the problem.
+# Since this twitter account has so many followers,
+# even using a large number like 10,000 followers still
+# results in a small intersection between this user's
+# friends and followers, often just one user.
+head(friends_and_followersDF, 10)
+
+```
+
+## Problem 4 (Optional): Explore the data
+
+Run some additional experiments with your data to gain familiarity with the twitter data and twitter API
+
+First more exploration with the math tweets.
+
+```{r}
+
+# Most frequent words found in the tweets as barplot
+barplot(tweets_2[1:7,]$freq, las = 2,
+        names.arg = tweets_2[1:7,]$word,
+        col = "green",
+        main =" Top 7 most frequent words in math tweets",
+        ylab = "Word frequencies")
+
+# Discover how people are using twitter (what sorts of devices, etc.?)
+
+sources <- sapply(tweets, function(x) x$getStatusSource())
+sources <- gsub("</a>", "", sources)
+sources <- strsplit(sources, ">")
+sources <- sapply(sources, function(x) ifelse(length(x) > 1, x[2], x[1]))
+source_table = table(sources)
+pie(source_table[source_table > 10])
+
+# Generate a worldcloud to visualize word frequency.
+wordcloud(corpus, min.freq=1,max.words=30,
+          scale=c(2,1),
+          colors=brewer.pal(8, "Dark2"),
+          random.color=T, random.order=F)
+
+```
+Next, further exploration with Russell Wilson's Twitter Account
+
+```{r}
+
+total_friends = user$getFriendsCount()
+print(total_friends)
+recent_tweets = userTimeline("DangeRussWilson")
+print(recent_tweets[1:3])
+
+```
+
+## Final Commentary
+
+For this case study I collected tweets related to math by searching twitter using #math. Originally I collected 500 tweets but stripped this collection of retweets in order to reduce repetition during analysis. This topic is interesting to me since I am a PhD student in math and so I want to know how this field is talked about on social media. I analyzed the data by determining the most frequent words used in tweets about math, what the most common hashtags were in tweets about math, and the most often mentioned twitter users in these tweets. I found that tweets about math are very much dominated by tweets related to homework help for students. Also, twitter for android is most commonly used to interact with twitter (at least when it comes to the collection I made). An issue I noticed with the tweets collected using searchTweets() is that tweets are frequently truncated so many of the frequent 'words' I found have a letter or a few letters chopped off at the end, i.e. 'biolog' instead of 'biology'. 
+
+I also used the twitteR package to learn about how one can study a particular twitter user. I picked Russell Wilson, a professional football player. I am a fan of the Seattle Seahawks.

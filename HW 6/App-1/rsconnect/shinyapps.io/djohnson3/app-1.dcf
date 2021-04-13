@@ -1,0 +1,10 @@
+name: app-1
+title:
+username:
+account: djohnson3
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3905868
+bundleId: 4447228
+url: https://djohnson3.shinyapps.io/app-1/
+when: 1617898735.8201

@@ -1,0 +1,552 @@
+---
+title: "Case Study 2 - Analyzing data from MovieLens"
+author: "Data Science with R"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+## Introduction
+
+In this case study we will look at the movies data set from MovieLens. It contains data about users and how they rate movies.
+
+## Problem 1: Importing the MovieLens data set and merging it into a single data frame
+
+```{r, echo=F}
+library(readr)
+library(dplyr)
+library(ggplot2)
+movielens = 'https://raw.githubusercontent.com/dnchari/DS501_MovieLens/master/Results/unifiedMLDataMulti.csv'
+mlData = read.csv(movielens)
+```
+
+```{r}
+mlData <- distinct(mlData)
+print(colnames(mlData))
+```
+
+**Report some basic details of the data you collected. For example:**
+
+- How many movies have an average rating over 4.5 overall?
+
+  + I found there were 11 movies with a mean rating over 4.5.
+
+```{r}
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  summarise(mean_rating = mean(rating, na.rm = TRUE))
+
+high_mean_rating_count <- mlData_aggregates %>%
+  filter(mean_rating > 4.5) %>%
+  nrow()
+
+mlData_aggregates %>%
+  filter(mean_rating > 4.5) %>%
+  head(high_mean_rating_count)
+```
+- How many movies have an average rating over 4.5 among men?
+
+  + I found there were 18 movies with a mean rating over 4.5 among women.
+
+```{r}
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  filter(gender == "M") %>%
+  summarise(mean_rating_men = mean(rating, na.rm = TRUE)) %>%
+  full_join(mlData_aggregates)
+
+high_mean_men_count <- mlData_aggregates %>%
+  filter(mean_rating_men > 4.5) %>%
+  nrow()
+
+mlData_aggregates %>%
+  arrange(desc(mean_rating_men)) %>%
+  select(-mean_rating) %>%
+  head()
+```
+
+- How many movies have an average rating over 4.5 among women?
+
+  + I found by using a similar approach to the above that there were 16 movies with a mean rating over 4.5 among women.
+
+```{r, echo = F}
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  filter(gender == "F") %>%
+  summarise(mean_rating_women = mean(rating, na.rm = TRUE)) %>%
+  full_join(mlData_aggregates)
+
+high_mean_women_count <- mlData_aggregates %>%
+  filter(mean_rating_women > 4.5) %>%
+  nrow()
+
+mlData_aggregates %>%
+  arrange(desc(mean_rating_women)) %>%
+  select(-mean_rating, -mean_rating_men) %>%
+  head()
+```
+- Let us order by mean rating but keep men/women mean rating columns for comparison. Note that some movies were not rated by both men and women.
+```{r, echo = F}
+mlData_aggregates %>%
+  arrange(desc(mean_rating)) %>%
+  head(10)
+```
+
+- How many movies have an median rating over 4.5 among men over age 30?
+
+  + I found there were 47 movies with a median rating over 4.5 among men over 30.
+
+```{r}
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  filter(gender == "M", age > 30) %>%
+  summarise(median_rating_men30plus = median(rating)) %>%
+  full_join(mlData_aggregates)
+
+high_median_men30plus_count <- mlData_aggregates %>%
+  filter(median_rating_men30plus > 4.5) %>%
+  nrow()
+
+mlData_aggregates %>%
+  arrange(desc(median_rating_men30plus)) %>%
+  select(movie_title, median_rating_men30plus) %>%
+  head(10)
+```
+
+
+-How many movies have an median rating over 4.5 among women over age 30?
+
+  + I found using a simlar approach to the above that there were 70 movies with a median rating over 4.5 among women over 30.
+
+```{r, echo = F}
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  filter(gender == "F", age > 30) %>%
+  summarise(median_rating_women30plus = median(rating)) %>%
+  full_join(mlData_aggregates)
+
+high_median_women30plus_count <- mlData_aggregates %>%
+  filter(median_rating_women30plus > 4.5) %>%
+  nrow()
+high_median_women30plus_count
+
+mlData_aggregates %>%
+  arrange(desc(median_rating_women30plus)) %>%
+  select(movie_title, median_rating_women30plus) %>%
+  head(10)
+```
+
+- For comparison, order by median rating but keep men/women over 30 median rating columns. Note here that some movies were not rated by both men over 30 and women over 30.
+
+```{r, echo = F}
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  summarise(median_rating = median(rating)) %>%
+  full_join(mlData_aggregates)
+
+mlData_aggregates %>%
+  arrange(desc(median_rating)) %>%
+  select(
+    movie_title,
+    median_rating,
+    median_rating_men30plus,
+    median_rating_women30plus
+    ) %>%
+  head(10)
+```
+- What are the ten most "popular" movies?
+  + Perhaps we might consider a movie popular if it has both a high mean and median rating. I found there were many films with a mean rating of 5 and many films with a median rating of 5. Upon finding the intersection of these two sets, it turned out that there were 10 films with both a mean rating of 5 and a median rating of 5. Without considering rating count, we could propose that the top ten most popular films are these 10 films with median and mean rating of 5. `
+
+```{r}
+mlData_popular <- mlData_aggregates %>%
+  filter(
+    (mean_rating == 5) & (median_rating == 5)
+    )
+
+mlData_popular %>%
+  select(movie_title, median_rating, mean_rating) %>%
+  head(nrow(mlData_popular))
+```
+
+- Make some conjectures about how easy various groups are to please!
+
+  + Question: Does the mean rating of all films depend on the age of the reviewer?
+  + Answer: It appears not, at least without grouping by further characteristics.
+  
+```{r, echo = F}
+
+age_ratings_df <- mlData %>%
+  group_by(age) %>%
+  summarise(mean_rating = mean(rating), median_rating = median(rating))
+
+age_ratings_plot <- age_ratings_df %>%
+  ggplot(aes(x = age, y = mean_rating)) +
+  geom_point(alpha = .5) +
+  labs(
+    title = "Average Film Rating vs. Critic Age",
+    subtitle = "Age does not strongly affect overall film ratings",
+    x = "Critic Age",
+    y = "Mean Film Rating"
+  )
+
+age_ratings_plot
+
+```
+
+  + Question: Do some film genres just generally receive higher ratings than other genres? Do some film genres perform well with certain groups but poorly with other groups?
+  + Answer: The highest rated genre (using mean rating of all films within each genre) is Film-Noir with a mean rating of about 3.92 while the lowest rated genre is Fantasy with a mean rating of about 3.22.
+  + Answer: Usually there is not much difference between ratings by men vs women but men tend to enjoy Film-Noir more than women while women enjoy Musicals more than men.
+  + Answer: Children (critics aged less than 16) enjoy war, sci-fi, and animation films the most. 
+  
+```{r, echo = F}
+
+genre_aggregates_df <- mlData %>%
+  group_by(genre) %>%
+  summarise(mean_rating = mean(rating), median_rating = median(rating)) %>%
+  arrange(desc(mean_rating))
+
+genre_aggregates_df <- mlData %>%
+  group_by(genre) %>%
+  filter(gender == "M") %>%
+  summarise(mean_rating_men = mean(rating)) %>%
+  inner_join(genre_aggregates_df)
+
+genre_aggregates_df <- mlData %>%
+  group_by(genre) %>%
+  filter(gender == "F") %>%
+  summarise(mean_rating_women = mean(rating)) %>%
+  inner_join(genre_aggregates_df)
+
+genre_aggregates_df <- genre_aggregates_df %>%
+  arrange(desc(mean_rating))
+
+genre_ratings_plot <-  genre_aggregates_df %>%
+  filter((mean_rating > 3.68) | (mean_rating < 3.36)) %>%
+  ggplot(aes(x = reorder(genre, mean_rating), y = mean_rating)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  scale_x_discrete(labels = scales::wrap_format(8)) +
+  labs(
+    title = "Considering Mean Film Rating by Genre",
+    subtitle = "The top 3 highest and 3 lowest rated genres",
+    x = "Film Genre",
+    y = "Mean Film Rating"
+    
+  )
+genre_ratings_plot
+
+genre_aggregates_df %>%
+  filter(abs(mean_rating_men - mean_rating_women) > .1) %>%
+  select(genre, mean_rating_men, mean_rating_women) %>%
+head()
+
+mlData %>%
+  group_by(genre) %>%
+  filter(age < 16) %>%
+  summarise(mean_rating = mean(rating)) %>%
+  filter(mean_rating > 3.52) %>%
+  ggplot(aes(x = reorder(genre, mean_rating), y = mean_rating)) + geom_bar(stat = "summary", fun = "mean") +
+  scale_x_discrete(labels = scales::wrap_format(8)) +
+  labs(
+    title = "Highest average rated genres among children",
+    x = "Film Genre",
+    y = "Mean Film Rating"
+    
+  )
+  
+
+```
+  + Question: How do critic ratings depend on how old a film is?
+  + Answer: Apparently no, but there appears to be more variance in ratings among newer films.
+  
+```{r, echo = F}
+
+time_plot <- mlData %>%
+  group_by(release_date) %>%
+  summarise(mean_rating_release = mean(rating)) %>%
+  ggplot(aes(x = release_date, y = mean_rating_release)) +
+  geom_point() +
+  labs(
+    title = "Mean Film Ratings by Release Date",
+    x = "Release Date",
+    y = "Mean Rating"
+  )
+
+time_plot
+
+```
+
+  + Question: How does occupation relate to mean ratings?
+  + Answer: The occupations that tend to rate movies the highest are the unemployed, doctors, lawyers, educators, and artists. Since the unemployed are the easiest to please we might consider focusing on this group. However, the unemployed may not have as much money to spend on movies, so consider next what types of films are best liked by lawyers.
+  
+```{r, echo = F}
+
+occupation_plot <- mlData %>%
+  group_by(occupation) %>%
+  summarise(mean_rating = mean(rating)) %>%
+  filter(mean_rating > 3.65) %>%
+  ggplot(aes(x = reorder(occupation, mean_rating), y = mean_rating)) + 
+  geom_bar(stat = "summary", fun = "mean") +
+  scale_x_discrete(labels = scales::wrap_format(8)) +
+  labs(
+    title = "Easiest Types of Occupations to Entertain",
+    subtitle = "The 5 highest mean movie ratings when grouped by occupation",
+    x = "Occupation",
+    y = "Mean Movie Rating Assigned"
+  )
+
+occupation_plot
+
+lawyer_plot <- mlData %>%
+  group_by(genre) %>%
+  filter(occupation == "lawyer") %>%
+  summarise(mean_rating = mean(rating)) %>%
+  filter(mean_rating > 3.85) %>%
+  ggplot(aes(x = reorder(genre, mean_rating), y = mean_rating)) + geom_bar(stat = "summary", fun = "mean") +
+  scale_x_discrete(labels = scales::wrap_format(8))  +
+  labs(
+    title = "Favorite Genres of Lawyer",
+    x = "Genre",
+    y = "Mean Rating"
+  )
+
+lawyer_plot
+
+```
+
+## Problem 2: Expand our investigation to histograms
+**An obvious issue with any inferences drawn from Problem 1 is that we did not consider how many times a movie was rated.**
+    
+- Plot a histogram of the ratings of all movies.
+    
+```{r, echo = F}
+ratings_histogram <- mlData %>%
+  ggplot(aes(x = rating)) +
+  geom_bar() + labs(
+    title = "Movie Ratings",
+    subtitle = "Rating distribution among all observations",
+    x = "Critic Rating",
+    y = "Frequency"
+    )
+
+ratings_histogram
+```
+
+- Plot a histogram of the number of ratings each movie received.
+
+```{r, echo = F}
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  summarise(rating_count = n()) %>%
+  full_join(mlData_aggregates)
+
+rating_count_histogram <- mlData_aggregates %>%
+  ggplot(aes(x = rating_count)) +
+  geom_histogram(binwidth = 5) +
+  labs(
+    title = "Movie Rating Frequencies Distribution",
+    x = "Number of Times Rated",
+    y = "Frequency"
+  )
+
+rating_count_histogram
+
+rating_count_histogram_truncated <- mlData_aggregates %>%
+  filter(rating_count <= 500) %>%
+  ggplot(aes(x = rating_count)) +
+  geom_histogram(binwidth = 10) +
+  labs(
+    title = "Movie Rating Frequencies Distribution",
+    subtitle = "Frequencies for movies rated 500 times or fewer",
+    x = "Number of Times Rated",
+    y = "Frequency"
+  )
+
+rating_count_histogram_truncated
+```
+
+- Plot a histogram of the average rating for each movie.
+- Plot a histogram of the average rating for movies which are rated more than 100 times.
+    + Notice that when we include movies with 100 or fewer ratings, there are more mean ratings on the ends of the distribution. So when we reduce the dataset to just films with more than 100 ratings, the distribution of rating means tends to have lower variance.
+    + Generally speaking, it is better to trust that a movie with high mean rating and a high number (>100) of critic ratings than a movie with high mean rating and a low number (<= 100) of critic ratings. The reason is that infrequently rated movies are more likely to have very high or very low mean. In contrast, frequently rated films are more likely to have a moderate mean rating (between 2 and 4). So a frequently rated film with high mean rating is robust to increases in the number of ratings while an infrequently rated film with high mean may have a high mean due to chance. 
+
+```{r, echo = F}
+mean_rating_histogram <- mlData_aggregates %>%
+  ggplot(aes(x = mean_rating)) +
+  geom_histogram(binwidth = .2) +
+  labs(
+    title = "Distribution of Mean Rating of Films",
+    x = "Mean Rating",
+    y = "Frequency"
+  )
+
+mean_rating_histogram
+
+mean_rating_100plus_ratings_histogram <- mlData_aggregates %>%
+  filter(rating_count > 100) %>%
+  ggplot(aes(x = mean_rating)) +
+  geom_histogram(binwidth = .2) +
+  labs(
+    title = "Distribution of Mean Rating of Films",
+    subtitle = "Considering films with more than 100 critic ratings",
+    x = "Mean Rating",
+    y = "Frequency"
+  )
+
+mean_rating_100plus_ratings_histogram
+```
+
+- Make some conjectures about the distribution of ratings!
+
+  + Question: We saw that movies with a large number of ratings or few ratings may tend to have more extreme results. Do films with a large number of ratings do better or worse than those with a moderate number of ratings? What about films with very few ratings. 
+  + Answer: It looks like films that are rated often tend to have a higher mean rating compared to the whole dataset while films that have very few ratings have a lower mean rating compared to the whole dataset. 
+  
+```{r}
+count_deciles = quantile(mlData_aggregates$rating_count, c(.1, .2, .3, .4, .5, .6, .7, .8, .9))
+count_deciles
+
+oft_rated_films_df <- mlData %>%
+  group_by(movie_title) %>%
+  summarise(
+    rating_count = n(),
+    median_rating = median(rating),
+    mean_rating = mean(rating)
+    ) %>%
+  filter(rating_count > count_deciles[9])
+head(oft_rated_films_df)
+
+rarely_rated_films_df <- mlData %>%
+  group_by(movie_title) %>%
+  summarise(
+    rating_count = n(),
+    median_rating = median(rating),
+    mean_rating = mean(rating)
+    ) %>%
+  filter(rating_count < count_deciles[3])
+head(rarely_rated_films_df)
+
+mean(oft_rated_films_df$mean_rating)
+mean(rarely_rated_films_df$mean_rating)
+mean(mlData_aggregates$mean_rating)
+```
+
+## Problem 3: Correlation: Men versus women
+**Let us look more closely at the relationship between the pieces of data we have.**
+
+
+- Make a scatter plot of men versus women and their mean rating for every movie.
+- Make a scatter plot of men versus women and their mean rating for movies rated more than 200 times.
+- Compute the correlation coefficent between the ratings of men and women.
+    + When we compare mean ratings between men and women while including movies with 100 or fewer ratings, the correlation between mean rating among men and mean rating among women appears positive but not very strong for prediction. The correlation coefficient in this case is 0.5149489. When considering movies with more than 100 ratings the correlation is stronger with a correlation coefficient in this case of 0.8042434.
+    + Considering movies with more than 100 ratings, the relationship between mean men rating and mean women rating is linear for the most part. This is more true near the mean of the mean ratings (about 3.5) where a rating of about 3.5 among men corresponds to a mean rating of about 3.5 among women. The relation appears not quite linear for high and low mean ratings.
+    
+```{r, echo = F}
+
+mean_scatterplot <- mlData_aggregates %>%
+  ggplot(aes(x = mean_rating_men, y = mean_rating_women)) +
+  geom_point(aes(color = rating_count), alpha = .25) +
+  labs(
+    title = "Relationship Between Ratings by Women vs. Men",
+    subtitle = "Mean rating comparison for each film",
+    x = "Mean Rating Among Men",
+    y = "Mean Rating Among Women",
+    color = "Number of Ratings"
+    )
+mean_scatterplot
+
+gender_mean_corr = mlData_aggregates$mean_rating_men %>%
+  cor(
+    mlData_aggregates$mean_rating_women,
+    use="complete.obs"
+    )
+
+
+mean_scatterplot_200 <- mlData_aggregates %>%
+  filter(rating_count > 200) %>%
+  ggplot(aes(x = mean_rating_men, y = mean_rating_women)) + 
+  geom_point(aes(color = rating_count), alpha = .5) +
+  labs(
+    title = "Relationship Between Ratings by Women vs. Men",
+    subtitle = "Mean rating comparison among films with over 200 ratings",
+    x = "Mean Rating Among Men",
+    y = "Mean Rating Among Women",
+    color = "Number of Ratings"
+    ) +
+  geom_smooth(method = "lm") +
+  geom_smooth(se = FALSE, color = "green")
+
+mean_scatterplot_200
+
+gender_mean_corr200 = mlData_aggregates$
+  mean_rating_men[mlData_aggregates$rating_count > 200] %>%
+  cor(
+    mlData_aggregates$
+      mean_rating_women[mlData_aggregates$rating_count > 200]
+    )
+
+```
+
+- Conjecture under what circumstances the rating given by one gender can be used to predict the rating given by the other gender.
+    + Question: Are men and women more similar when they are younger or older?
+    + 
+    
+```{r, echo = T}
+
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  filter(gender == "M", age > 40) %>%
+  summarise(mean_rating_men40plus = mean(rating)) %>%
+  full_join(mlData_aggregates)
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  filter(gender == "W", age > 40) %>%
+  summarise(mean_rating_women40plus = mean(rating)) %>%
+  full_join(mlData_aggregates)
+
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  filter(gender == "M", age < 30) %>%
+  summarise(mean_rating_men30minus = mean(rating)) %>%
+  full_join(mlData_aggregates)
+mlData_aggregates <- mlData %>%
+  group_by(movie_title) %>%
+  filter(gender == "W", age < 30) %>%
+  summarise(mean_rating_women30minus = mean(rating)) %>%
+  full_join(mlData_aggregates)
+
+
+old_scatterplot <- mlData_aggregates %>%
+  ggplot(aes(x = mean_rating_men40plus, y = mean_rating_women40plus)) + 
+  geom_point(aes(color = rating_count), alpha = .5) +
+  labs(
+    title = "Relationship Between Ratings by Women vs. Men Over 40",
+    x = "Mean Rating Among Men",
+    y = "Mean Rating Among Women",
+    color = "Number of Ratings"
+    )
+old_scatterplot
+
+young_scatterplot <- mlData_aggregates %>%
+  ggplot(aes(x = mean_rating_men30minus, y = mean_rating_women30minus)) + 
+  geom_point(aes(color = rating_count), alpha = .5) +
+  labs(
+    title = "Relationship Between Ratings by Women vs. Men Over 40",
+    x = "Mean Rating Among Men",
+    y = "Mean Rating Among Women",
+    color = "Number of Ratings"
+    )
+young_scatterplot
+
+gender_mean_corr_old = cor(
+    mlData_aggregates$mean_rating_men40plus,
+    mlData_aggregates$mean_rating_women40plus,
+    )
+
+gender_mean_corr_young = cor(
+    mlData_aggregates$mean_rating_men30minus,
+    mlData_aggregates$mean_rating_women30minus
+    )
+```
+## Problem 4: Open Ended Question: Business Intelligence
+
+
+- From the exploration, I would suggest marketing films to lawyers, doctors, and educators of both genders. If we have discovered anything from this dataset, it is that men and women really do not differ significantly in their preferences and trying to make business decisions based on this factor is not recommended. Consider marketing Film-Noir and War Movies. If the film is released and not well received by the first few critics, elicit ratings from more critics. Generally, by increasing the number of ratings, the film is likely to improve it's overall mean and median ratings. 
